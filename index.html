@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic-Tac-Toe with Room Code</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #game-container {
+            text-align: center;
+        }
+        #room-entry, #game {
+            display: none;
+        }
+        #room-entry.active, #game.active {
+            display: block;
+        }
+        #board {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            grid-gap: 5px;
+            margin: 20px auto;
+        }
+        .cell {
+            width: 100px;
+            height: 100px;
+            background-color: white;
+            border: 2px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .cell:hover {
+            background-color: #f5f5f5;
+        }
+        #status {
+            font-size: 24px;
+            margin-top: 20px;
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        input {
+            padding: 10px;
+            font-size: 16px;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="room-entry" class="active">
+            <button id="create-room">Create Room</button>
+            <div>
+                <input id="room-code" type="text" placeholder="Enter Room Code">
+                <button id="join-room">Join Room</button>
+            </div>
+        </div>
+        <div id="game">
+            <div id="board"></div>
+            <div id="status">Waiting for opponent...</div>
+            <button id="reset">Reset Game</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script>
+        // Will be updated to Railway backend URL after deployment
+        // const socket = io('https://your-tictactoe-backend.up.railway.app');
+        const socket = io('http://localhost:3000'); // For local testing
+        const roomEntry = document.getElementById('room-entry');
+        const game = document.getElementById('game');
+        const boardElement = document.getElementById('board');
+        const status = document.getElementById('status');
+        const resetButton = document.getElementById('reset');
+        const roomCodeInput = document.getElementById('room-code');
+        let board = Array(9).fill(null);
+        let player = null;
+        let roomId = null;
+
+        document.getElementById('create-room').addEventListener('click', () => {
+            socket.emit('createRoom');
+        });
+
+        document.getElementById('join-room').addEventListener('click', () => {
+            const code = roomCodeInput.value.trim();
+            if (code) socket.emit('joinRoom', code);
+        });
+
+        socket.on('roomCreated', (data) => {
+            roomId = data.roomId;
+            player = 'X';
+            roomEntry.classList.remove('active');
+            game.classList.add('active');
+            status.textContent = `Room Code: ${roomId} | Your turn (X)`;
+            renderBoard();
+        });
+
+        socket.on('roomJoined', (data) => {
+            roomId = data.roomId;
+            player = 'O';
+            roomEntry.classList.remove('active');
+            game.classList.add('active');
+            status.textContent = `Room Code: ${roomId} | Waiting for X's turn (O)`;
+            renderBoard();
+        });
+
+        socket.on('error', (msg) => {
+            alert(msg);
+        });
+
+        socket.on('updateBoard', (data) => {
+            board = data.board;
+            renderBoard();
+            const winner = checkWinner();
+            if (winner) {
+                status.textContent = `Player ${winner} wins! (Room: ${roomId})`;
+            } else if (board.every(cell => cell)) {
+                status.textContent = `It's a tie! (Room: ${roomId})`;
+            } else {
+                status.textContent = data.currentPlayer === player ? 
+                    `Your turn (${player}) (Room: ${roomId})` : 
+                    `Player ${data.currentPlayer}'s turn (Room: ${roomId})`;
+            }
+        });
+
+        socket.on('reset', () => {
+            board = Array(9).fill(null);
+            renderBoard();
+            status.textContent = player === 'X' ? 
+                `Your turn (X) (Room: ${roomId})` : 
+                `Waiting for X's turn (O) (Room: ${roomId})`;
+        });
+
+        function renderBoard() {
+            boardElement.innerHTML = '';
+            board.forEach((value, index) => {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.textContent = value || '';
+                cell.addEventListener('click', () => handleClick(index));
+                boardElement.appendChild(cell);
+            });
+        }
+
+        function handleClick(index) {
+            if (!player || board[index] || checkWinner()) return;
+            socket.emit('move', { roomId, index });
+        }
+
+        function checkWinner() {
+            const winConditions = [
+                [0, 1, 2], [3, 4, 5], [6, 7, 8],
+                [0, 3, 6], [1, 4, 7], [2, 5, 8],
+                [0, 4, 8], [2, 4, 6]
+            ];
+            for (let condition of winConditions) {
+                const [a, b, c] = condition;
+                if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                    return board[a];
+                }
+            }
+            return null;
+        }
+
+        resetButton.addEventListener('click', () => {
+            socket.emit('reset', roomId);
+        });
+
+        renderBoard();
+    </script>
+</body>
+</html>
